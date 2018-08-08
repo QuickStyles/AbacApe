@@ -21,7 +21,5 @@
   "devDependencies": {
     "typescript": "^3.0.1"
   },
-  "dependencies": {
-    "is-plain-object": "^2.0.4"
-  }
+  "dependencies": {}
 }
