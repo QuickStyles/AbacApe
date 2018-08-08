@@ -1,5 +1,5 @@
 {
-  "name": "nabac",
+  "name": "abacape",
   "version": "1.0.0",
   "description": "Attribute based access control",
   "main": "dist/index.js",
