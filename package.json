@@ -17,7 +17,7 @@
     "control"
   ],
   "author": "Brandon YW Lam",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "typescript": "^3.0.1"
   },
