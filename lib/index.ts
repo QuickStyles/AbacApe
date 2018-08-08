@@ -1,7 +1,7 @@
 enum Defaults {
   NULL_SUBJECT = 'NULL_SUBJECT'
 }
-class AbacApe {
+export default class AbacApe {
   resources: {[key:string]:{[key:string]:{[key:string]:CreatePolicyOptions<any,any>['policy']}}};
   createError: any;
   constructor() {
