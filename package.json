@@ -1,0 +1,27 @@
+{
+  "name": "nabac",
+  "version": "1.0.0",
+  "description": "Attribute based access control",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "prepublish": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc"
+  },
+  "keywords": [
+    "abac",
+    "attribute",
+    "based",
+    "access",
+    "control"
+  ],
+  "author": "Brandon YW Lam",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^3.0.1"
+  },
+  "dependencies": {
+    "is-plain-object": "^2.0.4"
+  }
+}
