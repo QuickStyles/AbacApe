@@ -8,7 +8,7 @@ export default class AbacApe {
     this.resources = {};
   }
 
-  createPolicy<TRC, TSC>({subject, action, resource, environment, policy}:CreatePolicyOptions<TRC, TSC>) {
+  createPolicy<TSubjectClassOrObject, TResourceClassOrObject>({subject, action, resource, environment, policy}:CreatePolicyOptions<TSubjectClassOrObject, TResourceClassOrObject>) {
     if (!( (Array.isArray(action) || (typeof action === 'string') ))) {
       throw new TypeError(`Expected action to be string or array of strings, got ${typeof action}`)
     }
@@ -19,7 +19,7 @@ export default class AbacApe {
       throw new TypeError(`Expected subject to bo object or null, got ${typeof subject}`);
     }
     
-    if(!this._checkResource<TRC>(resource)) {
+    if(!this._checkResource(resource)) {
       this._registerResource(resource);
     }
 
@@ -36,22 +36,21 @@ export default class AbacApe {
     }
   }
 
-  private _checkResource<TRC>(resource:Constructor<TRC>) {
-    console.log(resource)
+  private _checkResource<TResourceClassOrObject>(resource:Constructor<TResourceClassOrObject> | AnyObject) {
     return this.resources.hasOwnProperty(resource.name);
   }
 
-  private _registerResource<TRC>(resource:{new():TRC}) {
+  private _registerResource<TResourceClassOrObject>(resource:Constructor<TResourceClassOrObject> | AnyObject) {
     this.resources[resource.name] = {};
   }
 
-  private _subjectIsIndexed<TRC, TSC>(resource:{new():TRC}, subject:{new():TSC}|null) {
+  private _subjectIsIndexed<TSubjectClassOrObject, TResourceClassOrObject>(subject:Constructor<TSubjectClassOrObject> | AnyObject | null, resource:Constructor<TResourceClassOrObject>| AnyObject) {
     if (subject) {
       return this.resources[resource.name].hasOwnProperty(subject.name);
     }
   }
 
-  private _indexSubject<TRC, TSC>(resource:{new():TRC}, subject:{new():TSC}|null) {
+  private _indexSubject<TSubjectClassOrObject, TResourceClassOrObject>(subject:Constructor<TSubjectClassOrObject> | AnyObject | null, resource: Constructor<TResourceClassOrObject> | AnyObject) {
     if (subject) {
       this.resources[resource.name][subject.name] = {};
     } else {
@@ -59,8 +58,7 @@ export default class AbacApe {
     }
   }
 
-  private _addPolicyToResource<TRC, TSC>(subject:{new():TSC} | null, action:string, resource:{new():TRC}, environment:any, policy:CreatePolicyOptions<TRC,TSC>['policy']) {
-    console.log(action);
+  private _addPolicyToResource<TSubjectClassOrObject, TResourceClassOrObject>(subject:Constructor<TSubjectClassOrObject> | AnyObject | null, action:string, resource: Constructor<TResourceClassOrObject> | AnyObject, environment:any, policy:CreatePolicyOptions<TResourceClassOrObject,TSubjectClassOrObject>['policy']) {
     if (subject) {
       this.resources[resource.name][subject.name][action] = policy;
     } else {
@@ -68,19 +66,51 @@ export default class AbacApe {
     }
   }
 
-  checkPolicy<TSC,TRC>({subject, action, resource, environment}:AuthorizeOptions<TSC,TRC>) :PolicyResultsObject{
+  checkPolicy<TSubjectClassOrObject,TResourceClassOrObject>({subject, action, resource, environment}:AuthorizeOptions<TSubjectClassOrObject,TResourceClassOrObject>) :PolicyResultsObject{
     if (subject) {
-      return this.resources[resource.constructor.name][subject.constructor.name][action](subject,resource,environment);
+      try {
+        return this.resources[resource.constructor.name][subject.constructor.name][action](subject,resource,environment);
+      } catch (error) {
+        let errors = [];
+        // TODO: make error into a
+        errors.push(new ReferenceError(`Subject:${subject.constructor.name} Action:${action} Resource:${resource.constructor.name} is not a policy`))
+        return {result:false, errors}
+      }
     } else {
-      return this.resources[resource.constructor.name][Defaults.NULL_SUBJECT][action](subject, resource, environment);
+      try {
+        return this.resources[resource.constructor.name][Defaults.NULL_SUBJECT][action](subject, resource, environment);
+      } catch (error) {
+        let errors = [];
+        // should push error into errors array.
+        errors.push(new ReferenceError(`Subject:null Action:${action} Resource:${resource.constructor.name} is not a policy`))
+        return {result: false, errors};
+      }
     }
+  }
+
+  printPolicies() {
+    console.dir(this.resources);
   }
 }
 
-interface CreatePolicyOptions<TRC, TSC = null> {
-  subject: null | Constructor<TSC>;
+interface CreatePolicyOptions<TSubjectClassOrObject, TResourceClassOrObject = null> {
+  /**
+   * Used to index the constructor of the subject.
+   * The subject parameter in the policy function must be an instance of this Object/Constructor
+   */
+  subject: Constructor<TSubjectClassOrObject> | AnyObject;
+  /**
+   * Name of action being performed.
+   */
   action: string | string[];
-  resource: Constructor<TRC>;
+  /**
+   * Used to index the constructor of the resource.
+   * The resource parameter in the policy function must be an instance of this Object/Constructor
+   */
+  resource: Constructor<TResourceClassOrObject> | AnyObject;
+  /**
+   * Additional data used to authenticate the policy.
+   */
   environment?: any;
   /**
    * @description Creates a Policy. A Policy should be made up of one or more conditions and should always
@@ -97,23 +127,25 @@ interface CreatePolicyOptions<TRC, TSC = null> {
    * }
    * @example
    * 
-   * @param subject Object requesting resource. Will be the same subject option passed into createPolicy.
-   * @param resource Resource being requested. Will be the same resource option passed into createPolicy.
-   * @param environment Environment and additional data used to authorize access to the reqested resource. Will be the same environment option passed into createPolicy.
+   * @param subject Instance of Object requesting resource.
+   * @param resource Instnace of Object being requested.
+   * @param environment Environment and additional data used to authorize access to the reqested resource.
    * @see createPolicy
    */
-  policy(subject:TSC, resource:TRC, environment:any):PolicyResultsObject;
+  policy(subject:InstanceType<Constructor<TSubjectClassOrObject>> | AnyObject, resource: InstanceType<Constructor<TResourceClassOrObject>> | AnyObject, environment:any):PolicyResultsObject;
 }
+
+type AnyObject = {[any:string]: any};
 
 interface PolicyResultsObject {
   result: boolean;
   errors: {}[] | null;
 }
 
-interface AuthorizeOptions<TSC, TRC> {
-  subject: InstanceType<{new():TSC}> | null;
-  resource:InstanceType<{new():TRC}>;
-  environment:any;
+interface AuthorizeOptions<TSubjectClassOrObject, TResourceClassOrObject> {
+  subject: InstanceType<Constructor<TSubjectClassOrObject>> | null;
+  resource:InstanceType<Constructor<TResourceClassOrObject>>;
+  environment?:any;
   action:string;
 }
 
