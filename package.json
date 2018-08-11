@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "prepublish": "npm run build",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
     "build": "tsc"
   },
   "repository": {
@@ -22,6 +22,7 @@
   "author": "Brandon YW Lam",
   "license": "MIT",
   "devDependencies": {
+    "babel-preset-env": "^1.7.0",
     "jest": "^23.5.0",
     "typescript": "^3.0.1"
   },
