@@ -2,10 +2,10 @@ enum Defaults {
   NULL_SUBJECT = 'NULL_SUBJECT'
 }
 export default class AbacApe {
-  resources: {[key:string]:{[key:string]:{[key:string]:CreatePolicyOptions<any,any>['policy']}}};
+  policies: {[key:string]:{[key:string]:{[key:string]:CreatePolicyOptions<any,any>['policy']}}};
   createError: any;
   constructor() {
-    this.resources = {};
+    this.policies = {};
   }
 
   createPolicy<TSubjectClassOrObject, TResourceClassOrObject>({subject, action, resource, environment, policy}:CreatePolicyOptions<TSubjectClassOrObject, TResourceClassOrObject>) {
@@ -37,39 +37,39 @@ export default class AbacApe {
   }
 
   private _checkResource<TResourceClassOrObject>(resource:Constructor<TResourceClassOrObject> | AnyObject) {
-    return this.resources.hasOwnProperty(resource.name);
+    return this.policies.hasOwnProperty(resource.name);
   }
 
   private _registerResource<TResourceClassOrObject>(resource:Constructor<TResourceClassOrObject> | AnyObject) {
-    this.resources[resource.name] = {};
+    this.policies[resource.name] = {};
   }
 
   private _subjectIsIndexed<TSubjectClassOrObject, TResourceClassOrObject>(subject:Constructor<TSubjectClassOrObject> | AnyObject | null, resource:Constructor<TResourceClassOrObject>| AnyObject) {
     if (subject) {
-      return this.resources[resource.name].hasOwnProperty(subject.name);
+      return this.policies[resource.name].hasOwnProperty(subject.name);
     }
   }
 
   private _indexSubject<TSubjectClassOrObject, TResourceClassOrObject>(subject:Constructor<TSubjectClassOrObject> | AnyObject | null, resource: Constructor<TResourceClassOrObject> | AnyObject) {
     if (subject) {
-      this.resources[resource.name][subject.name] = {};
+      this.policies[resource.name][subject.name] = {};
     } else {
-      this.resources[resource.name][Defaults.NULL_SUBJECT] = {}; 
+      this.policies[resource.name][Defaults.NULL_SUBJECT] = {}; 
     }
   }
 
   private _addPolicyToResource<TSubjectClassOrObject, TResourceClassOrObject>(subject:Constructor<TSubjectClassOrObject> | AnyObject | null, action:string, resource: Constructor<TResourceClassOrObject> | AnyObject, environment:any, policy:CreatePolicyOptions<TResourceClassOrObject,TSubjectClassOrObject>['policy']) {
     if (subject) {
-      this.resources[resource.name][subject.name][action] = policy;
+      this.policies[resource.name][subject.name][action] = policy;
     } else {
-      this.resources[resource.name][Defaults.NULL_SUBJECT][action] = policy;
+      this.policies[resource.name][Defaults.NULL_SUBJECT][action] = policy;
     }
   }
 
   checkPolicy<TSubjectClassOrObject,TResourceClassOrObject>({subject, action, resource, environment}:AuthorizeOptions<TSubjectClassOrObject,TResourceClassOrObject>) :PolicyResultsObject{
     if (subject) {
       try {
-        return this.resources[resource.constructor.name][subject.constructor.name][action](subject,resource,environment);
+        return this.policies[resource.constructor.name][subject.constructor.name][action](subject,resource,environment);
       } catch (error) {
         let errors = [];
         // TODO: make error into a
@@ -78,7 +78,7 @@ export default class AbacApe {
       }
     } else {
       try {
-        return this.resources[resource.constructor.name][Defaults.NULL_SUBJECT][action](subject, resource, environment);
+        return this.policies[resource.constructor.name][Defaults.NULL_SUBJECT][action](subject, resource, environment);
       } catch (error) {
         let errors = [];
         // should push error into errors array.
@@ -89,7 +89,7 @@ export default class AbacApe {
   }
 
   printPolicies() {
-    console.dir(this.resources);
+    console.dir(this.policies);
   }
 }
 
