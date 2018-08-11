@@ -22,6 +22,7 @@
   "author": "Brandon YW Lam",
   "license": "MIT",
   "devDependencies": {
+    "jest": "^23.5.0",
     "typescript": "^3.0.1"
   },
   "dependencies": {}
