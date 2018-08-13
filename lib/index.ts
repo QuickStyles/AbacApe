@@ -8,7 +8,7 @@ export default class AbacApe {
     this.policies = {};
   }
 
-  createPolicy<TSubjectClassOrObject, TResourceClassOrObject>({subject, action, resource, environment, policy}:CreatePolicyOptions<TSubjectClassOrObject, TResourceClassOrObject>) {
+  createPolicy<TS, TR>({subject, action, resource, environment, policy}:CreatePolicyOptions<TS, TR>) {
     if (!( (Array.isArray(action) || (typeof action === 'string') ))) {
       throw new TypeError(`Expected action to be string or array of strings, got ${typeof action}`)
     }
@@ -18,51 +18,69 @@ export default class AbacApe {
     if(typeof subject === 'undefined') {
       throw new TypeError(`Expected subject to bo object or null, got ${typeof subject}`);
     }
-    
-    if(!this._checkResource(resource)) {
-      this._registerResource(resource);
-    }
-
-    if(!this._subjectIsIndexed(resource, subject)) {
-      this._indexSubject(resource, subject);
-    }
 
     if (typeof action === 'string') {
-      this._addPolicyToResource(subject, action, resource, environment, policy);
+      this._checkPolicyTree(subject, action, resource);
+      this._addPolicy({subject, action, resource, environment, policy});
     } else {
       for (let i = 0; i < action.length; i++) {
-        this._addPolicyToResource(subject, action[i], resource, environment, policy);
+        this._checkPolicyTree(subject, action[i], resource);
+        this._addPolicy({subject, action:action[i], resource, environment, policy});
       }
     }
   }
 
-  private _checkResource<TResourceClassOrObject>(resource:Constructor<TResourceClassOrObject> | AnyObject) {
-    return this.policies.hasOwnProperty(resource.name);
-  }
+  _checkPolicyTree<TS, TR>(subject:CreatePolicyOptions<TS, TR>['subject'], action:CreatePolicyOptions<TS,TR>['action'], resource:CreatePolicyOptions<TS,TR>['resource']) {
+    if(!this._isSubjectIndexed(subject)) {
+      this._indexSubject(subject);
+    }
 
-  private _registerResource<TResourceClassOrObject>(resource:Constructor<TResourceClassOrObject> | AnyObject) {
-    this.policies[resource.name] = {};
-  }
+    if(!this._isActionIndexed(subject, action)) {
+      this._indexAction(subject, action);
+    }
 
-  private _subjectIsIndexed<TSubjectClassOrObject, TResourceClassOrObject>(subject:Constructor<TSubjectClassOrObject> | AnyObject | null, resource:Constructor<TResourceClassOrObject>| AnyObject) {
-    if (subject) {
-      return this.policies[resource.name].hasOwnProperty(subject.name);
+    if(this._isResourceIndexed(subject, action, resource)) {
+      throw new Error(`a policy already exists for ${subject.name} -> ${action} -> ${resource.name}`);
     }
   }
 
-  private _indexSubject<TSubjectClassOrObject, TResourceClassOrObject>(subject:Constructor<TSubjectClassOrObject> | AnyObject | null, resource: Constructor<TResourceClassOrObject> | AnyObject) {
-    if (subject) {
-      this.policies[resource.name][subject.name] = {};
+  private _isSubjectIndexed<TS, TR>(subject:CreatePolicyOptions<TS, TR>['subject']) {
+    return this.policies.hasOwnProperty(subject.name);
+  }
+
+  private _indexSubject<TS, TR>(subject:CreatePolicyOptions<TS,TR>['subject']) {
+    this.policies[subject.name] = {};
+  }
+
+  private _isActionIndexed<TS,TR>(subject:CreatePolicyOptions<TS,TR>['subject'], action:CreatePolicyOptions<TS,TR>['action']) {
+    if (!Array.isArray(action) && typeof action === 'string') {
+      return this.policies[subject.name].hasOwnProperty(action);
     } else {
-      this.policies[resource.name][Defaults.NULL_SUBJECT] = {}; 
+      throw new Error(`expected action to be string but got ${typeof(action)}`);
     }
   }
 
-  private _addPolicyToResource<TSubjectClassOrObject, TResourceClassOrObject>(subject:Constructor<TSubjectClassOrObject> | AnyObject | null, action:string, resource: Constructor<TResourceClassOrObject> | AnyObject, environment:any, policy:CreatePolicyOptions<TResourceClassOrObject,TSubjectClassOrObject>['policy']) {
-    if (subject) {
-      this.policies[resource.name][subject.name][action] = policy;
+  private _indexAction<TS, TR>(subject:CreatePolicyOptions<TS,TR>['subject'], action:CreatePolicyOptions<TS,TR>['action']) {
+    if (!Array.isArray(action) && typeof action === 'string') {
+      return this.policies[subject.name][action] = {};
     } else {
-      this.policies[resource.name][Defaults.NULL_SUBJECT][action] = policy;
+      throw new Error(`expected action to be string but got ${typeof(action)}`);
+    }
+  }
+
+  private _isResourceIndexed<TS, TR>(subject:CreatePolicyOptions<TS,TR>['subject'], action:CreatePolicyOptions<TS,TR>['action'], resource:CreatePolicyOptions<TS,TR>['resource']) {
+    if (!Array.isArray(action) && typeof action === 'string') {
+      return this.policies[subject.name][action].hasOwnProperty(resource.name);
+    } else {
+      throw new Error(`expected action to be string but got ${typeof(action)}`);
+    }
+  }
+
+  private _addPolicy<TS,TR>({subject, action, resource, environment, policy}:CreatePolicyOptions<TS,TR>) {
+    if (typeof action === 'string') {
+      this.policies[subject.name][action][resource.name] = policy;
+    } else {
+      throw new Error(`expected action to be string but got ${typeof(action)}`);
     }
   }
 
