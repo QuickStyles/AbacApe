@@ -8,7 +8,7 @@ function validSubject<TS>(subject:Constructor<TS>|AnyObject) {
 function validResource<TR>(resource:Constructor<TR>|AnyObject) {
   return typeof resource === 'object' || typeof resource === 'function';
 };
-function shiftNodeFromArray(nodes:{[any:string]:any}[]) {
+function shiftNodeFromArray(nodes:(Constructor<{[any:string]:any}> | string | AnyObject)[]) {
   nodes.shift();
   return nodes;
 }
@@ -16,7 +16,7 @@ function isPlainObject(obj:object) {
   return obj === Object(obj) && !Array.isArray(obj) && typeof obj !== 'function';
 }
 export default class AbacApe {
-  policies: {[key:string]:{[key:string]:{[key:string]:CreatePolicyOptions<any,any>['policy']}}};
+  policies: {[key:string]:{[key:string]:{[key:string]:<TS,TR>(subject:Constructor<TS> | AnyObject, resource: Constructor<TR> | AnyObject, environment:any) => PolicyResultsObject}}};
   conditions: {[key:string]:{[key:string]:{[key:string]:<TS,TR>(subject:InstanceType<Constructor<TS>>, resource:InstanceType<Constructor<TR>>, environment:any) => boolean|Error}}};
   createError: any;
   constructor() {
@@ -29,57 +29,25 @@ export default class AbacApe {
     if (!( (Array.isArray(action) || (typeof action === 'string') ))) {
       throw new TypeError(`Expected action to be string or array of strings, got ${typeof action}`)
     }
-    
+
     if(typeof policy !== 'function') {
       throw new TypeError(`Expected policy to be function, got ${typeof policy}`);
     }
 
     if (typeof action === 'string') {
-      this._checkPolicyTree(subject, action, resource);
+      this._normalizeTree(this.policies, [subject, action, resource])
+      if(!this._isResourceIndexed(subject, action, resource)) {
+        throw new Error(`a policy already exists for ${subject.name} -> ${action} -> ${resource.name}`);
+      }
       this._addPolicy({subject, action, resource, environment, policy});
     } else {
       for (let i = 0; i < action.length; i++) {
-        this._checkPolicyTree(subject, action[i], resource);
+        this._normalizeTree(this.policies, [subject, action, resource])
+        if(!this._isResourceIndexed(subject, action, resource)) {
+          throw new Error(`a policy already exists for ${subject.name} -> ${action} -> ${resource.name}`);
+        }
         this._addPolicy({subject, action:action[i], resource, environment, policy});
       }
-    }
-  }
-
-  _checkPolicyTree<TS, TR>(subject:CreatePolicyOptions<TS, TR>['subject'], action:CreatePolicyOptions<TS,TR>['action'], resource:CreatePolicyOptions<TS,TR>['resource']) {
-    if(!this._isSubjectIndexed(subject)) {
-      this._indexSubject(subject);
-    }
-
-    if(!this._isActionIndexed(subject, action)) {
-      this._indexAction(subject, action);
-    }
-
-    if(this._isResourceIndexed(subject, action, resource)) {
-      throw new Error(`a policy already exists for ${subject.name} -> ${action} -> ${resource.name}`);
-    }
-  }
-
-  private _isSubjectIndexed<TS, TR>(subject:CreatePolicyOptions<TS, TR>['subject']) {
-    return this.policies.hasOwnProperty(subject.name);
-  }
-
-  private _indexSubject<TS, TR>(subject:CreatePolicyOptions<TS,TR>['subject']) {
-    this.policies[subject.name] = {};
-  }
-
-  private _isActionIndexed<TS,TR>(subject:CreatePolicyOptions<TS,TR>['subject'], action:CreatePolicyOptions<TS,TR>['action']) {
-    if (!Array.isArray(action) && typeof action === 'string') {
-      return this.policies[subject.name].hasOwnProperty(action);
-    } else {
-      throw new Error(`expected action to be string but got ${typeof(action)}`);
-    }
-  }
-
-  private _indexAction<TS, TR>(subject:CreatePolicyOptions<TS,TR>['subject'], action:CreatePolicyOptions<TS,TR>['action']) {
-    if (!Array.isArray(action) && typeof action === 'string') {
-      return this.policies[subject.name][action] = {};
-    } else {
-      throw new Error(`expected action to be string but got ${typeof(action)}`);
     }
   }
 
@@ -147,9 +115,15 @@ export default class AbacApe {
     this.conditions[subject.name][resource.name][key] = func;
   }
 
-  private _normalizeTree(tree:{[any:string]:any}, nodes:{[any:string]:any}[] | Constructor<{[any:string]:any}>[]) {
+  private _normalizeTree(tree:AnyObject, nodes:(Constructor<{[any:string]:any}> | string | AnyObject)[]) {
     for (let i = 0; i < nodes.length; i++) {
-      let node_name = nodes[i].name;
+      let node_name;
+      let node = nodes[i];
+      if (typeof node !== 'string') {
+        node_name = node.name
+      } else {
+        node_name = node;
+      }
       if (tree.hasOwnProperty(node_name)) {
         this._normalizeTree(tree[node_name], shiftNodeFromArray(nodes))
       } else {
@@ -159,18 +133,6 @@ export default class AbacApe {
     }
   };
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
