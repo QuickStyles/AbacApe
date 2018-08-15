@@ -78,7 +78,30 @@ export default class AbacApe {
     for (const key in condition) {
       if (condition.hasOwnProperty(key)) {
         const statement = condition[key];
-        this._addCondition(subject, resource, environment, key, statement[key]);
+        this._addCondition(subject, resource, environment, key, statement);
+      }
+    }
+  }
+
+  private _addCondition<TS, TR>(subject:Constructor<TS>, resource:Constructor<TR>, environment:any, key:string, func:any) {
+    this._normalizeTree(this.conditions,[subject, resource]);
+    this.conditions[subject.name][resource.name][key] = func;
+  }
+
+  private _normalizeTree(tree:AnyObject, nodes:(Constructor<{[any:string]:any}> | string | AnyObject)[]) {
+    for (let i = 0; i < nodes.length; i++) {
+      let node_name;
+      let node = nodes[i];
+      if (typeof node !== 'string') {
+        node_name = node.name
+      } else {
+        node_name = node;
+      }
+      if (tree.hasOwnProperty(node_name)) {
+        this._normalizeTree(tree[node_name], shiftNodeFromArray(nodes))
+      } else {
+        tree[node_name] = {};
+        this._normalizeTree(tree[node_name], shiftNodeFromArray(nodes))
       }
     }
   }
@@ -88,7 +111,6 @@ export default class AbacApe {
       return this.policies[subject.constructor.name][action][resource.constructor.name](subject, resource, environment);
     } catch (error) {
       let errors = [];
-      // TODO: make error into a
       errors.push(new ReferenceError(`Subject:${subject.constructor.name} Action:${action} Resource:${resource.constructor.name} is not a policy`))
       return {result:false, errors}
     }
@@ -109,29 +131,6 @@ export default class AbacApe {
       }
     }
   }
-
-  private _addCondition<TS, TR>(subject:Constructor<TS>, resource:Constructor<TR>, environment:any, key:string, func:any) {
-    this._normalizeTree(this.conditions,[ subject, resource]);
-    this.conditions[subject.name][resource.name][key] = func;
-  }
-
-  private _normalizeTree(tree:AnyObject, nodes:(Constructor<{[any:string]:any}> | string | AnyObject)[]) {
-    for (let i = 0; i < nodes.length; i++) {
-      let node_name;
-      let node = nodes[i];
-      if (typeof node !== 'string') {
-        node_name = node.name
-      } else {
-        node_name = node;
-      }
-      if (tree.hasOwnProperty(node_name)) {
-        this._normalizeTree(tree[node_name], shiftNodeFromArray(nodes))
-      } else {
-        tree[node_name] = {};
-        this._normalizeTree(tree[node_name], shiftNodeFromArray(nodes))
-      }
-    }
-  };
 }
 
 
