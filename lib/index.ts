@@ -138,26 +138,37 @@ export default class AbacApe {
     const conditions_object = this._getConditions(subject, resource);
     for (let i = 0; i < policy_array.length; i++) {
       const policy_condition = policy_array[i];
-      condition_results.push(conditions_object[policy_condition](subject, action, environment));
+      condition_results.push(conditions_object[policy_condition](subject, resource, environment));
     }
-    const verdict = condition_results.map(({result, error}) => {
-      if (error) {
-        return error;
+    const errors = [];
+    for (let i = 0; i < condition_results.length; i++) {
+      const result = condition_results[i];
+      if (result.error) {
+        errors.push(result.error);
       }
-    })
+    }
+    if (errors.length > 0) {
+      return errors
+    } else {
+      return true;
+    }
   }
 
   _getPolicy<TS,TR>(subject:Constructor<TS> | AnyObject, action:string, resource:Constructor<TR> | AnyObject) {
-    return this.policies[subject.name][action][resource.name];
+    return this.policies[subject.constructor.name][action][resource.constructor.name];
   }
 
   _getConditions<TS,TR>(subject: Constructor<TS> | AnyObject, resource: Constructor<TR> | AnyObject) {
-    return this.conditions[subject.name][resource.name];
+    return this.conditions[subject.constructor.name][resource.constructor.name];
   }
   printPolicies() {
     console.dir(this.policies);
   }
 
+  /**
+   * curried checkPolicy
+   * 
+   */
   auth(subject:any) {
     return (action:any) => {
       return (resource:any) => {
