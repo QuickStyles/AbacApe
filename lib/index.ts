@@ -16,9 +16,8 @@ function isPlainObject(obj:object) {
   return obj === Object(obj) && !Array.isArray(obj) && typeof obj !== 'function';
 }
 export default class AbacApe {
-  policies: {[key:string]:{[key:string]:{[key:string]: string[]}}};
-  conditions: {[key:string]:{[key:string]:{[key:string]:ConditionFunction<any,any>}}};
-  createError: any;
+  private policies: {[key:string]:{[key:string]:{[key:string]: string[]}}};
+  private conditions: {[key:string]:{[key:string]:{[key:string]:ConditionFunction<any,any>}}};
   constructor() {
     this.policies = {};
     this.conditions = {};
@@ -54,6 +53,14 @@ export default class AbacApe {
       throw new TypeError(`Expected resource to be constructor or plain object, got ${typeof resource}`);
     }
 
+    /**
+     * Throw error if condition object already exists.
+     * Note: if condition already exists it will be frozen.
+     */
+    if (this._checkForNode(this.conditions, [subject.name, resource.name])) {
+      throw Error(`conditions already exists for subject:${subject.name} | resource:${resource.name}`);
+    }
+
     for (const key in condition) {
       if (condition.hasOwnProperty(key)) {
         const statement = condition[key];
@@ -61,7 +68,7 @@ export default class AbacApe {
       }
     }
     /**
-     * createConditions will only create conditions for the [Subject][Resource] once. 
+     * createConditions will only create conditions for the [Subject][Resource] once.
      */
     Object.freeze(this.conditions[subject.name][resource.name]);
   }
@@ -101,7 +108,7 @@ export default class AbacApe {
    * @param tree 
    * @param nodes 
    */
-  private _checkForNode(tree:AnyObject, nodes:(Constructor<{[any:string]:any}> | string | AnyObject)[]) {
+  private _checkForNode(tree:AnyObject, nodes:(Constructor<{[any:string]:any}> | string | AnyObject)[]):any {
     for (let i = 0; i < nodes.length; i++) {
       let node_name;
       let node = nodes[i];
@@ -111,25 +118,17 @@ export default class AbacApe {
         node_name = node;
       }
       if (tree.hasOwnProperty(node_name)) {
-        if (nodes.length > 0)  {
-          this._checkForNode(tree[node_name], shiftNodeFromArray(nodes));
+        if (nodes.length - 1 > 0)  {
+          return this._checkForNode(tree[node_name], shiftNodeFromArray(nodes));
         }
-        else return true;
+        else {
+          return true;
+        };
       } else {
         return false;
       }
     }
   }
-
-  // checkPolicy<TSubjectClassOrObject, TResourceClassOrObject>({subject, action, resource, environment}:AuthorizeOptions<TSubjectClassOrObject,TResourceClassOrObject>) :PolicyResultsObject{
-  //   try {
-  //     return this.policies[subject.constructor.name][action][resource.constructor.name](subject, resource, environment);
-  //   } catch (error) {
-  //     let errors = [];
-  //     errors.push(new ReferenceError(`Subject:${subject.constructor.name} Action:${action} Resource:${resource.constructor.name} is not a policy`))
-  //     return {result:false, errors}
-  //   }
-  // }
 
   checkPolicy<TSubject, TResource>(subject:IT<TSubject> | IT<AnyObject>, 
   resource: IT<TResource> | IT<AnyObject>, 
@@ -169,24 +168,6 @@ export default class AbacApe {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // types
 
