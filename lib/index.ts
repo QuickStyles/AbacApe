@@ -23,9 +23,31 @@ function getNameFrom(node:Constructor<AnyObject> | string | AnyObject):string {
   }
 }
 
+interface ConditionMap<TS,TR> {
+  //Subject
+  [key:string]: {
+    //Resource
+    [key:string]: {
+      //Condition Name
+      [key:string]: ConditionFunction<TS,TR>
+    }
+  }
+}
+
+interface PolicyMap {
+  //Subject
+  [key:string]: {
+    //Action
+    [key:string]: {
+      //Resource
+      [key:string]:  (keyof AbacApe['conditions'][any][any])[];
+    }
+  }
+}
+
 export default class AbacApe {
-  private policies: {[key:string]:{[key:string]:{[key:string]: string[]}}};
-  private conditions: {[key:string]:{[key:string]:ConditionMap<any, any>}};
+  private policies: PolicyMap;
+  conditions: ConditionMap<any,any>;
   constructor() {
     this.policies = {};
     this.conditions = {};
@@ -247,25 +269,9 @@ interface CreatePolicyOptions<TSubject, TResource> {
 
 type AnyObject = {[any:string]: any};
 
-interface PolicyResultsObject {
-  result: boolean;
-  errors: {}[] | null;
-}
-
 interface ConditionResultsObject {
   error: null | any[];
   result:boolean;
-}
-
-interface AuthorizeOptions<TSubjectClassOrObject, TResourceClassOrObject> {
-  subject: InstanceType<Constructor<TSubjectClassOrObject>>;
-  resource:InstanceType<Constructor<TResourceClassOrObject>>;
-  environment?:any;
-  action:string;
-}
-
-interface ConditionMap<TSubject, TResource> {
-  [any:string]:(subject: IT<TSubject>, resource: IT<TResource>, environment:any) => ConditionResultsObject;
 }
 
 type Constructor<TClass> = new(...args:any[]) => TClass;
