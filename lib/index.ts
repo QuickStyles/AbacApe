@@ -31,6 +31,65 @@ export default class AbacApe {
     this.conditions = {};
   }
 
+  /**
+   * check authorization function using alternative syntax.
+   * @example
+   * 
+   * const Ape = new AbacApe();
+   * class Resource {}
+   * class Subject {}
+   * Ape.createCondition({
+   *  subject: Subject,
+   *  resource: Resource,
+   *  condition: {
+   *    resource_not_hidden: (subject, resource, environment) => {
+   *      if (!resource.hidden) {
+   *        return {result: true, error: null}
+   *      } else {
+   *        return {result: false, error: [new Error('resource is hidden')]}
+   *      }
+   *    },
+   *    under_request_limit: (subject, resource, environemnt) => {
+   *      if(environment.number_of_requests <= 10) {
+   *        return {result: true, error: null}
+   *      } else {
+   *        return {result: false, error: [new Error('resource requested more than 10 times')]}
+   *      }
+   *    }
+   *  }
+   * });
+   * 
+   * Ape.createPolicy({
+   *  subject: Subject,
+   *  action: 'view',
+   *  resource: Resource,
+   *  conditions: ['resource_not_hidden', 'under_request_limit']
+   * });
+   * 
+   * Ape.check(resource_instance).view(subject_instance, {number_of_requests:4});
+   * // returns true;
+   * @example
+   * @param resource_instance subject of policy check
+   * 
+   * @returns true if policy passes or array of errors if any conditions fail.
+   */
+  check<TSubjectInstance>(resource_instance:InstanceType<Constructor<TSubjectInstance>>) {
+    const model_name = resource_instance.constructor.name;
+    const actions = this.policies[model_name];
+    const action_functions = this._generateActionFunctions(resource_instance, actions);
+    return action_functions;
+  }
+
+  private _generateActionFunctions<TSubject>(model:InstanceType<Constructor<TSubject>>, actions:PolicyMap[any]) {
+    const action_functions:any = {};
+    Object.keys(actions).map((action, index) => {
+      action_functions[action] = <TResource>(resource:InstanceType<Constructor<TResource>>, environment:any) => {
+        return this.checkPolicy(model, resource, action, environment);
+      }
+    });
+    return action_functions;
+  };
+
   createPolicy<TS, TR>({subject, action, resource, environment, conditions}:CreatePolicyOptions<TS,TR>) {
     if (typeof action === 'string') {
       this._addPolicy({subject, action, resource, environment, conditions});
@@ -59,10 +118,14 @@ export default class AbacApe {
   private _checkForConditions(tree:AbacApe['conditions'], nodes:(Constructor<AnyObject> | string | AnyObject)[], conditions_array:(keyof AbacApe['conditions'][any][any])[]) {
     const condition_map = this._getNode(tree, nodes);
     let all_conditions_are_present = true;
-    // switch flag to false if condition map does not have condition
+    // switch flag to false if condition map does not have condition or if condition map does not exist;
     for (let i = 0; i < conditions_array.length; i++) {
       const condition = conditions_array[i];
-      if (condition_map && !condition_map.hasOwnProperty(condition)) {
+      if (condition_map) {
+        if (!condition_map.hasOwnProperty(condition)) {
+          all_conditions_are_present = false;
+        }
+      } else {
         all_conditions_are_present = false;
       }
     }
