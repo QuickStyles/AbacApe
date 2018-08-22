@@ -23,24 +23,6 @@ function getNameFrom(node:Constructor<AnyObject> | string | AnyObject):string {
   }
 }
 
-type ConditionMap = {
-  //Subject
-  [key:string]: {
-    //Resource
-    [key:string]: {
-      //Condition Name
-      [key:string]: ConditionFunction<any, any>
-    }
-  }
-}
-
-type PolicyMap = {
-  [key:string]: {
-    [key:string]: {
-      [key:string]:  (keyof AbacApe['conditions'][any][any])[];
-    }
-  }
-}
 export default class AbacApe {
   private policies: PolicyMap;
   conditions: ConditionMap;
@@ -273,3 +255,25 @@ interface ConditionResultsObject {
 type Constructor<TClass> = new(...args:any[]) => TClass;
 
 type IT<T> = InstanceType<Constructor<T>>;
+
+type ConditionMap = {
+  //Subject
+  [key:string]: {
+    //Resource
+    [key:string]: {
+      //Condition Name
+      [key:string]: ConditionFunction<any, any>
+    }
+  }
+}
+
+type PolicyMap = {
+  //Subject
+  [key:string]: {
+    //Action
+    [key:string]: {
+      //Resource
+      [key:string]:  (keyof AbacApe['conditions'][any][any])[];
+    }
+  }
+}
