@@ -1,5 +1,6 @@
 # AbacApe
 
+**(ALPHA)(NOT PRODUCTION READY)**
 Attribute Based Access Control Module for NodeJS
 
 ## Installing
