@@ -23,21 +23,6 @@ function getNameFrom(node:Constructor<AnyObject> | string | AnyObject):string {
   }
 }
 
-function equate(sre:SRE<any,any>, condition:ConditionFunction<any,any>, cb:any) {
-  const result = condition(...sre);
-  if (result === true) {
-    console.log(condition)
-    console.log(result)
-    return true;
-  } else {
-    console.log('false', result)
-    if(cb) {
-      cb(result);
-    }
-    return false;
-  }
-};
-
 interface PoliciesMap {
   [key:string]: {
     [key:string]: {
@@ -60,7 +45,7 @@ export default class AbacApe {
 
   init<TS>(subject:Constructor<TS> | AnyObject) {
     return {
-      createConditionsFor: <TR>(resource:Constructor<TR>, environemnt:any, conditions:ConditionObject) => {
+      createConditionsFor: <TR>(resource:Constructor<TR>, environemnt:any, conditions:ConditionsObject) => {
         this.createCondition({
           subject:subject,
           resource:resource,
@@ -75,11 +60,31 @@ export default class AbacApe {
             if (typeof action === 'string') {
               this._createPolicy(subject, action, resource, environemnt, function() {
                 const policy_function = arguments[0];
-                const conditions = arguments[1];
+                const conditions:ConditionObject = arguments[1];
+                let mapConditionFunctions = <MappedFunction>function(conditions_object:any, ...sre:any[]) {
+                  let condition_functions:any = {};
+                  condition_functions.errors = [];
+                  Object.keys(conditions_object).map((key) => {
+                    condition_functions[key] = function() {
+                      console.log('VERY IMPORTANT TO SEE value: ' + key, conditions_object[key].fn(...sre));
+                      if (conditions_object[key].fn(...sre)) {
+                        console.log('true block')
+                        return true;
+                      } else {
+                        console.log('false block')
+                        condition_functions.errors.push(conditions_object[key].err_msg);
+                        return false;
+                      }
+                    }
+                  });
+                  
+                  return condition_functions;
+                }
                 return function(subject:any, resource:any, environemnt:any) {
                   const sre = [subject, resource, environemnt];
                   // we add sre to a closure within equate so we don't need to pass it in every policy & condition call
-                  return policy_function(conditions, sre);
+                  const available_conditions = mapConditionFunctions(conditions, ...sre)
+                  return policy_function(available_conditions);
                 }
               }.apply(null, [fn, conditions_map]));
             }
@@ -159,6 +164,7 @@ export default class AbacApe {
     for (const key in condition) {
       if (condition.hasOwnProperty(key)) {
         const statement = condition[key];
+        // const statement = condition;
         this._addCondition(subject, resource, environment, key, statement);
       }
     }
@@ -168,9 +174,10 @@ export default class AbacApe {
     Object.freeze(this.conditions[subject.name][resource.name]);
   }
 
-  private _addCondition<TS, TR>(subject:Constructor<TS> | AnyObject, resource:Constructor<TR> | AnyObject, environment:any, condition_name:string, condition_function:ConditionFunction<TS,TR>) :void {
+  private _addCondition<TS, TR>(subject:Constructor<TS> | AnyObject, resource:Constructor<TR> | AnyObject, environment:any, condition_name:string, condition_object:ConditionObject) :void {
     this._normalizeTree(this.conditions,[subject, resource]);
-    this.conditions[subject.name][resource.name][condition_name] = condition_function;
+    console.log(condition_object)
+    this.conditions[subject.name][resource.name][condition_name] = condition_object;
   }
 
   /**
@@ -248,7 +255,7 @@ interface CreateCondtionOptions<TSubject, TResource> {
   subject: Constructor<TSubject> | AnyObject;
   resource: Constructor<TResource> | AnyObject;
   environment: any;
-  condition: {[any:string]: ConditionFunction<TSubject, TResource>}
+  condition: ConditionsObject
 }
 
 type ConditionFunction<TS,TR> = (subject: InstanceType<Constructor<TS>>, resource: InstanceType<Constructor<TR>>, environment:any) => ConditionResultsObject
@@ -295,7 +302,7 @@ type ConditionMap = {
     //Resource
     [key:string]: {
       //Condition Name
-      [key:string]: ConditionFunction<any, any>
+      [key:string]: ConditionObject
     }
   }
 }
@@ -311,8 +318,12 @@ type PolicyMap = {
   }
 }
 
+type ConditionsObject = {
+  [key:string]: ConditionObject
+}
 type ConditionObject = {
-  [key:string]: ConditionFunction<any,any>
+  err_msg: string,
+  fn: ConditionFunction<any,any>
 }
 
 type AddPolicyOptions<TS,TR> = {
@@ -345,36 +356,29 @@ class Animal {
 const abac = new AbacApe();
 const human_authorization = abac.init(Human);
 human_authorization.createConditionsFor(Animal, {}, {
-  sameId: function(subject, resource, environemnt) {
-    if (subject.id === resource.id) {
-      return true;
-    } else {
-      return false;
-    }
+  sameId: {
+    fn: function(s,r,e) {
+      return s.id === r.id;
+    },
+    err_msg: 'different ids'
   },
-  notSameId: function(s,r,e) {
-    if(s.id !== r.id) {
-      return true;
-    } else {
-      return false;
-    }
+  notSameId: {
+    fn: function(s,r,e) {
+      return s.id !== r.id;
+    },
+    err_msg: 'id should not be same'
   },
-  reqeust_number_2: function(subject, resource, environemnt) {
-    if (environemnt.request_number === 2) {
-      return true;
-    } else {
-      return false;
-    }
+  true: {
+    fn: function(s,r,e) {
+      return true
+    },
+    err_msg: 'its always true why would this get hit'
   },
-  yes: function(subject, resource, environemnt) {
-    if(false) {
-      return true;
-    } else {
-      return false;
-    }
-  },
-  alwaysTrue: function(s,r,e) {
-    return true;
+  false: {
+    fn: function(s,r,e) {
+      return false
+    },
+    err_msg: 'this is always false'
   }
 });
 
@@ -387,18 +391,19 @@ human_authorization.createConditionsFor(Animal, {}, {
  * we can use a try catch wrapper function and make sure all condition functions THROW errors if they happen.
  * this way our wrapper will catch any and all errors thrown and return appropriately
 */
-human_authorization.createPolicyFor('view', Animal, null).function((C:any, sre:any) => {
-  try {
-    return C.notSameId(...sre) || C.alwaysTrue(...sre);
-  } catch (error) {
-    return error;
-  }
+human_authorization.createPolicyFor('view', Animal, null).function((C:any) => {
+  return (C.sameId() && !C.notSameId()) && (C.true() || C.false());
 })
 
-abac.printPolicies();
+// abac.printPolicies();
 
 const h = new Human();
 const a = new Animal();
 
 const test = abac.policies.Human.view.Animal(h, a, {});
-console.log(test);
+console.log('log result:', test);
+
+interface MappedFunction {
+  (conditions:any, ...sre:any[]):any;
+  errors: any[]
+}
