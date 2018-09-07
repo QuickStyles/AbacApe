@@ -23,7 +23,42 @@ function getNameFrom(node:Constructor<AnyObject> | string | AnyObject):string {
   }
 }
 
-interface PoliciesMap {
+interface PolicyConditionsHash {
+  // less than ideal workaround:
+  // this dictionary has key 'errors' equal to an array of errors.
+  // unable to specify this key without typescript complaining
+  [key:string]: ((...sre:SRE<any,any>) => boolean) | string[];
+  // errors: Error[];
+}
+
+function createPolicyFunctionFactory(policy_function:(conditions:PolicyConditionsHash) => true | Error[], condition_map:SubjectResourceConditionsHash) {
+  return function(subject:Subject<any>, resource:Resource<any>, environemnt:any) {
+    const sre = [subject, resource, environemnt];
+    const available_conditions = generateAvailableConditionsForPolicy(condition_map, ...sre);
+    return policy_function(available_conditions);
+  }
+}
+
+function generateAvailableConditionsForPolicy(conditions_hash:any, ...sre:any[]) {
+  // TODO: add type
+  let condition_functions:any = {
+    errors: []
+  };
+  condition_functions.errors = [];
+  Object.keys(conditions_hash).map((key) => {
+    condition_functions[key] = function() {
+      if (conditions_hash[key].fn(...sre)) {
+        return true;
+      } else {
+        condition_functions.errors.push(conditions_hash[key].err_msg);
+        return false;
+      }
+    }
+  });
+  
+  return condition_functions;
+}
+interface PoliciesTree {
   [key:string]: {
     [key:string]: {
       [key:string]: (...sre:SRE<any,any>) => true | Error[];
@@ -33,19 +68,40 @@ interface PoliciesMap {
 
 type Subject<T> = AnyObject | Constructor<T>;
 type Resource<T> = AnyObject | Constructor<T>;
-type Action = string;
 type SRE<SubjectType, ResourceType> = [Subject<SubjectType>, Resource<ResourceType>, AnyObject];
 export default class AbacApe {
-  policies: PoliciesMap;
-  conditions: ConditionMap;
+  policies: PoliciesTree;
+  conditions: ConditionsTree;
   constructor() {
     this.policies = {};
     this.conditions = {};
   }
 
+  /**
+   * 
+   * @param subject
+   * @returns Contains createConditionsFor method and createPolicyFor method
+   */
   init<TS>(subject:Constructor<TS> | AnyObject) {
     return {
-      createConditionsFor: <TR>(resource:Constructor<TR>, environemnt:any, conditions:ConditionsObject) => {
+      /**
+       * @param resource
+       * @param environemnt
+       * @param conditions
+       * 
+       * @example
+       * const HumanAbac = init(Human)
+       * HumanAbac.createConditionsFor(Animal, Environment, {
+       *  isOwner: {
+       *    fn: (subject, resource, environment) {
+       *      return subject.pets.includes(resource) // must return boolean value
+       *    }
+       *    err_msg: `${subject.name} does not own ${resource.name}` // must return string value
+       *  }
+       * })
+       * @example
+       */
+      createConditionsFor: <TR>(resource:Constructor<TR>, environemnt:any, conditions:SubjectResourceConditionsHash) => {
         this.createCondition({
           subject:subject,
           resource:resource,
@@ -53,40 +109,45 @@ export default class AbacApe {
           condition:conditions
         });
       },
-      createPolicyFor: <TR>(action: string | string[], resource: Constructor<TR>, environemnt:any) => {
-        const conditions_map = this.conditions[subject.name][resource.name]; // object of functions that take in subject, resource, environment
+      /**
+       * @param action
+       * @param resource
+       * @param environemnt
+       * 
+       * @example
+       * 
+       * const HumanAbac = init(Human)
+       * const HumanAnimalPolicyCreator = HumanAbac.createPolicyFor(Animal)
+       * 
+       * HumanAnimalPolicyCreator.action('pet', (conditions) => {
+       *   return conditions.isOwner() && conditions.animalIsAlive()
+       * })
+       * @example
+       * 
+       * @example
+       * 
+       * const HumanAbac = init(Human)
+       * const HumanAnimalPolicyCreator = HumanAbac.createPolicyFor(Animal)
+       * 
+       * HumanAnimalPolicyCreator.action('pet', (conditions) => {
+       *   if(conditions.isOwner() && conditions.animalIsAlive()) {
+       *     return true
+       *   } else {
+       *     return conditions.errors
+       *   }
+       * })
+       * @example
+       */
+      createPolicyFor: <TR>(resource: Constructor<TR>, environemnt:any) => {
+        const conditions_hash = this.conditions[subject.name][resource.name]; // object of functions that take in subject, resource, environment
         return {
-          function: (fn: (conditions:any, sre:any) => true|Error[]) => {
+          action: (action: string | string[], policy_function: (conditions:any) => true|Error[]) => {
             if (typeof action === 'string') {
-              this._createPolicy(subject, action, resource, environemnt, function() {
-                const policy_function = arguments[0];
-                const conditions:ConditionObject = arguments[1];
-                let mapConditionFunctions = <MappedFunction>function(conditions_object:any, ...sre:any[]) {
-                  let condition_functions:any = {};
-                  condition_functions.errors = [];
-                  Object.keys(conditions_object).map((key) => {
-                    condition_functions[key] = function() {
-                      console.log('VERY IMPORTANT TO SEE value: ' + key, conditions_object[key].fn(...sre));
-                      if (conditions_object[key].fn(...sre)) {
-                        console.log('true block')
-                        return true;
-                      } else {
-                        console.log('false block')
-                        condition_functions.errors.push(conditions_object[key].err_msg);
-                        return false;
-                      }
-                    }
-                  });
-                  
-                  return condition_functions;
-                }
-                return function(subject:any, resource:any, environemnt:any) {
-                  const sre = [subject, resource, environemnt];
-                  // we add sre to a closure within equate so we don't need to pass it in every policy & condition call
-                  const available_conditions = mapConditionFunctions(conditions, ...sre)
-                  return policy_function(available_conditions);
-                }
-              }.apply(null, [fn, conditions_map]));
+              this._createPolicy(subject, action, resource, environemnt, createPolicyFunctionFactory(policy_function, conditions_hash));
+            } else {
+              for (let i = 0; i < action.length; i++) {
+                this._createPolicy(subject, action[i], resource, environemnt, createPolicyFunctionFactory(policy_function, conditions_hash));
+              }
             }
           }
         }
@@ -164,7 +225,6 @@ export default class AbacApe {
     for (const key in condition) {
       if (condition.hasOwnProperty(key)) {
         const statement = condition[key];
-        // const statement = condition;
         this._addCondition(subject, resource, environment, key, statement);
       }
     }
@@ -255,7 +315,7 @@ interface CreateCondtionOptions<TSubject, TResource> {
   subject: Constructor<TSubject> | AnyObject;
   resource: Constructor<TResource> | AnyObject;
   environment: any;
-  condition: ConditionsObject
+  condition: SubjectResourceConditionsHash
 }
 
 type ConditionFunction<TS,TR> = (subject: InstanceType<Constructor<TS>>, resource: InstanceType<Constructor<TR>>, environment:any) => ConditionResultsObject
@@ -296,7 +356,7 @@ type Constructor<TClass> = new(...args:any[]) => TClass;
 
 type IT<T> = InstanceType<Constructor<T>>;
 
-type ConditionMap = {
+type ConditionsTree = {
   //Subject
   [key:string]: {
     //Resource
@@ -318,7 +378,7 @@ type PolicyMap = {
   }
 }
 
-type ConditionsObject = {
+type SubjectResourceConditionsHash = {
   [key:string]: ConditionObject
 }
 type ConditionObject = {
@@ -334,76 +394,81 @@ type AddPolicyOptions<TS,TR> = {
   policy_fn: (...sre:SRE<any,any>) => true | Error[]
 }
 
-
 class Human {
   id:number;
   name: string;
   constructor() {
-    this.id = 1;
-    this.name = 'human';
+  this.id = 1;
+  this.name = 'human';
   }
-}
-
-class Animal {
+  }
+  
+  class Animal {
   id:number;
   name: string;
   constructor() {
-    this.id = 1;
-    this.name = 'animal'
+  this.id = 1;
+  this.name = 'animal'
   }
-}
-
-const abac = new AbacApe();
-const human_authorization = abac.init(Human);
-human_authorization.createConditionsFor(Animal, {}, {
+  }
+  
+  const abac = new AbacApe();
+  const human_authorization = abac.init(Human);
+  human_authorization.createConditionsFor(Animal, {}, {
   sameId: {
-    fn: function(s,r,e) {
-      return s.id === r.id;
-    },
-    err_msg: 'different ids'
+  fn: function(s,r,e) {
+  return s.id === r.id;
+  },
+  err_msg: 'different ids'
   },
   notSameId: {
-    fn: function(s,r,e) {
-      return s.id !== r.id;
-    },
-    err_msg: 'id should not be same'
+  fn: function(s,r,e) {
+  return s.id !== r.id;
+  },
+  err_msg: 'id should not be same'
   },
   true: {
-    fn: function(s,r,e) {
-      return true
-    },
-    err_msg: 'its always true why would this get hit'
+  fn: function(s,r,e) {
+  return true
+  },
+  err_msg: 'its always true why would this get hit'
   },
   false: {
-    fn: function(s,r,e) {
-      return false
-    },
-    err_msg: 'this is always false'
+  fn: function(s,r,e) {
+  return false
+  },
+  err_msg: 'this is always false'
   }
-});
+  });
+  
+  /**
+  * test case policy. this works if all conditions functions just return a boolean value. But, this is not the case.
+  * condition functions return either true or an error object because we want to provide the exact reason why a policy has failed.
+  * it is not possible to use logical operators with functions that return anything other than exact boolean values so the
+  * policy defined below will not work properly unless it's written in a very specific way, this won't fly.
+  * In order to allow the use of ligical operators and provide the ability to all errors when and if they occur
+  * we can use a try catch wrapper function and make sure all condition functions THROW errors if they happen.
+  * this way our wrapper will catch any and all errors thrown and return appropriately
+  */
+  human_authorization.createPolicyFor(Animal, null).action('view',(C:any) => {
+  return C.sameId();
+  })
+  
+  // abac.printPolicies();
+  
+  const h = new Human();
+  const a = new Animal();
+  let a_id_not_same = new Animal();
+  a_id_not_same.id = 1000;
+  console.time('total_time')
+  for (let i = 0; i < 20000; i++) {
+    console.time(`current_check# ${i}`);
+    abac.policies.Human.view.Animal(h, a, {});
+    console.timeEnd(`current_check# ${i}`)
+  }
+  console.timeEnd('total_time')
+  const test = abac.policies.Human.view.Animal(h, a, {});
+  const test_should_fail = abac.policies.Human.view.Animal(h, a_id_not_same, {});
 
-/**
- * test case policy. this works if all conditions functions just return a boolean value. But, this is not the case.
- * condition functions return either true or an error object because we want to provide the exact reason why a policy has failed.
- * it is not possible to use logical operators with functions that return anything other than exact boolean values so the
- * policy defined below will not work properly unless it's written in a very specific way, this won't fly.
- * In order to allow the use of ligical operators and provide the ability to all errors when and if they occur
- * we can use a try catch wrapper function and make sure all condition functions THROW errors if they happen.
- * this way our wrapper will catch any and all errors thrown and return appropriately
-*/
-human_authorization.createPolicyFor('view', Animal, null).function((C:any) => {
-  return (C.sameId() && !C.notSameId()) && (C.true() || C.false());
-})
-
-// abac.printPolicies();
-
-const h = new Human();
-const a = new Animal();
-
-const test = abac.policies.Human.view.Animal(h, a, {});
-console.log('log result:', test);
-
-interface MappedFunction {
-  (conditions:any, ...sre:any[]):any;
-  errors: any[]
-}
+  console.log('log result:', test);
+  console.log('this one should fail', test_should_fail)
