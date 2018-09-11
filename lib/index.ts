@@ -1,27 +1,23 @@
-function validSubject<TS>(subject:Constructor<TS>|AnyObject) {
-  return typeof subject === 'object' || typeof subject === 'function';
+function constructorOrPlainObject<T>(object:Constructor<T> | AnyObject) {
+  return object === Object(object) || typeof object === 'function';
 };
 
-function validResource<TR>(resource:Constructor<TR>|AnyObject) {
-  return typeof resource === 'object' || typeof resource === 'function';
-};
-
-function shiftNodeFromArray(nodes:(Constructor<{[any:string]:any}> | string | AnyObject)[]) {
+function shiftNodeFromArray<T>(nodes:NodePath) {
   nodes.shift();
   return nodes;
 };
 
-function isPlainObject(obj:object) {
+function isPlainObject(obj:AnyObject) {
   return obj === Object(obj) && !Array.isArray(obj) && typeof obj !== 'function';
 };
 
-function getNameFrom(node:Constructor<AnyObject> | string | AnyObject):string {
+function getNameFrom(node:Node):string {
   if (typeof node !== 'string') {
     return node.name;
   } else {
     return node;
   }
-}
+};
 
 function createPolicyFunctionFactory<TS,TR>(policy_function:PolicyFunction<TS,TR>, condition_hash:SubjectResourceConditionsHash<TS,TR>) :GeneratedPolicyFunction<TS,TR>{
   return function(subject:TS, resource:TR, environemnt:any) {
@@ -29,7 +25,7 @@ function createPolicyFunctionFactory<TS,TR>(policy_function:PolicyFunction<TS,TR
     const available_conditions = generateAvailableConditionsForPolicy(condition_hash, ...sre);
     return policy_function(available_conditions);
   }
-}
+};
 
 function generateAvailableConditionsForPolicy<TS,TR>(conditions_hash:SubjectResourceConditionsHash<TS,TR>, ...sre:SRE<TS,TR>) :PolicyConditionsHash<TS,TR>{
   let policy_conditions = <PolicyConditionsHash<TS,TR>>{};
@@ -46,7 +42,7 @@ function generateAvailableConditionsForPolicy<TS,TR>(conditions_hash:SubjectReso
   });
   
   return policy_conditions;
-}
+};
 
 export default class AbacApe {
   policies: PoliciesTree;
@@ -55,7 +51,7 @@ export default class AbacApe {
     this.policies = {};
     this.conditions = {};
   }
-
+  
   /**
    * 
    * @param subject
@@ -80,7 +76,7 @@ export default class AbacApe {
        * })
        * @example
        */
-      createConditionsFor: <TR>(resource:Resource<TR>, environemnt:any, conditions:SubjectResourceConditionsHash<TS,TR>) => {
+      createConditionsFor: <TR>(resource:Resource<TR>, environemnt:AnyObject, conditions:SubjectResourceConditionsHash<TS,TR>) => {
         this.createCondition({
           subject:subject,
           resource:resource,
@@ -120,6 +116,7 @@ export default class AbacApe {
         const conditions_hash = this.conditions[subject.name][resource.name]; // object of functions that take in subject, resource, environment
         return {
           action: (action: string | string[], policy_function: PolicyFunction<TS,TR>) => {
+            // createPolicy for each action if given multiple actions
             if (typeof action === 'string') {
               this._createPolicy(subject, action, resource, environemnt, createPolicyFunctionFactory(policy_function, conditions_hash));
             } else {
@@ -132,8 +129,8 @@ export default class AbacApe {
       }
     }
   }
-
-  private _createPolicy<TS,TR>(subject:Subject<TS>, action:string, resource:Resource<TR>, environemnt:any, policy_function:GeneratedPolicyFunction<TS,TR>) {
+  
+  private _createPolicy<TS,TR>(subject:Subject<TS>, action:string, resource:Resource<TR>, environemnt:AnyObject, policy_function:GeneratedPolicyFunction<TS,TR>) {
     this._normalizeTree(this.policies, [subject, action]);
     if (!this._checkForNode(this.policies, [subject, action, resource])) {
       let subject_action = this._getNode(this.policies, [subject, action]);
@@ -151,15 +148,15 @@ export default class AbacApe {
       throw new Error(`policy already exists for subject: ${subject.name} -> action: ${action} -> resource: ${resource.name}`);
     }
   }
-
+  
   createCondition<TS, TR>({subject, resource, environment, condition}:CreateCondtionOptions<TS,TR>) {
-    if(!validSubject(subject)) {
+    if(!constructorOrPlainObject(subject)) {
       throw new TypeError(`Expected subject to be constructor or plain object, got ${typeof subject}`);
     };
-    if(!validResource(resource)) {
+    if(!constructorOrPlainObject(resource)) {
       throw new TypeError(`Expected resource to be constructor or plain object, got ${typeof resource}`);
     }
-
+    
     /**
      * Throw error if condition object already exists.
      * Note: if condition already exists it will be frozen.
@@ -167,7 +164,7 @@ export default class AbacApe {
     if (this._checkForNode(this.conditions, [subject.name, resource.name])) {
       throw Error(`conditions already exists for subject:${subject.name} | resource:${resource.name}`);
     }
-
+    
     for (const key in condition) {
       if (condition.hasOwnProperty(key)) {
         const statement = condition[key];
@@ -179,20 +176,20 @@ export default class AbacApe {
      */
     Object.freeze(this.conditions[subject.name][resource.name]);
   }
-
+  
   private _addCondition<TS, TR>(subject:Constructor<TS> | AnyObject, resource:Constructor<TR> | AnyObject, environment:any, condition_name:string, condition_object:ConditionObject<TS,TR>) :void {
     this._normalizeTree(this.conditions,[subject, resource]);
     console.log(condition_object)
     this.conditions[subject.name][resource.name][condition_name] = condition_object;
   }
-
+  
   /**
    * Will create nodes path if it doesn't already exist
    * 
    * @param tree
    * @param nodes 
    */
-  private _normalizeTree(tree:AnyObject, nodes:(Constructor<AnyObject> | string | AnyObject)[]) :void {
+  private _normalizeTree(tree:AnyObject, nodes:NodePath) :void {
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       const node_name = getNameFrom(node);
@@ -204,22 +201,22 @@ export default class AbacApe {
       }
     }
   }
-
+  
   /**
    * If tree contains nodes path return true
    * 
    * @param tree 
    * @param nodes 
    */
-  private _checkForNode(tree:AnyObject, nodes:(Constructor<AnyObject> | string | AnyObject)[]):boolean {
+  private _checkForNode(tree:AnyObject, nodes:NodePath):boolean {
     if (this._getNode(tree, nodes)) {
       return true;
     } else {
       return false;
     }
   }
-
-  private _getNode(tree:AnyObject, nodes:(Constructor<AnyObject>| string | AnyObject)[]) :AnyObject|undefined {
+  
+  private _getNode(tree:AnyObject, nodes:NodePath) :AnyObject|undefined {
     for (let i = 0; i < nodes.length; i++) {
       let node_name;
       const node = nodes[i];
@@ -233,7 +230,7 @@ export default class AbacApe {
       }
     }
   }
-
+  
   _getPolicy<TS,TR>(subject:Constructor<TS> | AnyObject, action:string, resource:Constructor<TR> | AnyObject) {
     try {
       return this.policies[subject.constructor.name][action][resource.constructor.name];
@@ -241,7 +238,7 @@ export default class AbacApe {
       throw new Error(`policy ${subject.constructor.name} -> ${action} -> ${resource.constructor.name} does not exist`);
     }
   }
-
+  
   _getConditions<TS,TR>(subject: Constructor<TS> | AnyObject, resource: Constructor<TR> | AnyObject) {
     try {
       return this.conditions[subject.constructor.name][resource.constructor.name];
@@ -253,7 +250,7 @@ export default class AbacApe {
     console.dir(this.policies);
   }
   
-}
+};
 
 // types
 
@@ -266,7 +263,7 @@ type ConditionsTree = {
       [key:string]: ConditionObject<any,any>
     }
   }
-}
+};
 
 interface PoliciesTree {
   //Subject
@@ -277,7 +274,7 @@ interface PoliciesTree {
       [key:string]: GeneratedPolicyFunction<any,any>
     }
   }
-}
+};
 
 type GeneratedPolicyFunction<TS,TR> = (...sre:SRE<TS,TR>) => boolean | Error[];
 
@@ -286,18 +283,18 @@ interface CreateCondtionOptions<TSubject, TResource> {
   resource: Resource<TResource>
   environment: any;
   condition: SubjectResourceConditionsHash<TSubject,TResource>
-}
+};
 
 interface SubjectResourceConditionsHash<TS,TR> {
   [key:string] : ConditionObject<TS,TR>
-}
+};
 
 type ConditionObject<TS,TR> = {
   err_msg: string,
   fn: ConditionFunction<TS,TR>
-}
+};
 
-type ConditionFunction<TS,TR> = (subject:TS, action:TR, resource:AnyObject) => boolean
+type ConditionFunction<TS,TR> = (subject:TS, action:TR, resource:AnyObject) => boolean;
 
 type AnyObject = {[any:string]: any};
 
@@ -305,7 +302,7 @@ type Constructor<TClass> = new(...args:any[]) => TClass;
 
 type IT<T> = InstanceType<Constructor<T>>;
 
-type Subject<T> = Constructor<T> | AnyObject
+type Subject<T> = Constructor<T> | AnyObject;
 
 type Resource<T> = Constructor<T> | AnyObject;
 
@@ -316,3 +313,7 @@ type PolicyFunction<TS,TR> = (conditons:PolicyConditionsHash<TS,TR>) => boolean;
 type PolicyConditionsHash<TS,TR> = {[K in keyof SubjectResourceConditionsHash<TS,TR>]: ConditionFunction<TS,TR>} & {
   errors: Error[];
 }
+
+type NodePath = (Constructor<any> | string | AnyObject)[];
+
+type Node = (Constructor<any> | string | AnyObject);
