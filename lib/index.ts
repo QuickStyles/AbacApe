@@ -257,23 +257,6 @@ export default class AbacApe {
 
 // types
 
-interface CreateCondtionOptions<TSubject, TResource> {
-  subject: Subject<TSubject>
-  resource: Resource<TResource>
-  environment: any;
-  condition: SubjectResourceConditionsHash<TSubject,TResource>
-}
-
-type ConditionFunction<TS,TR> = (subject:TS, action:TR, resource:AnyObject) => ConditionResultsObject
-
-type AnyObject = {[any:string]: any};
-
-type ConditionResultsObject = boolean;
-
-type Constructor<TClass> = new(...args:any[]) => TClass;
-
-type IT<T> = InstanceType<Constructor<T>>;
-
 type ConditionsTree = {
   //Subject
   [key:string]: {
@@ -283,15 +266,6 @@ type ConditionsTree = {
       [key:string]: ConditionObject<any,any>
     }
   }
-}
-
-interface SubjectResourceConditionsHash<TS,TR> {
-  [key:string] : ConditionObject<TS,TR>
-}
-
-type ConditionObject<TS,TR> = {
-  err_msg: string,
-  fn: ConditionFunction<TS,TR>
 }
 
 interface PoliciesTree {
@@ -305,13 +279,40 @@ interface PoliciesTree {
   }
 }
 
-type Subject<T> = Constructor<T> | AnyObject
-type Resource<T> = Constructor<T> | AnyObject;
-type SRE<SubjectType, ResourceType> = [IT<SubjectType>, IT<ResourceType>, AnyObject];
-type PolicyConditionsHash<TS,TR> = {[K in keyof SubjectResourceConditionsHash<TS,TR>]: () => boolean} & {
-  errors: Error[];
-}
-
 type GeneratedPolicyFunction<TS,TR> = (...sre:SRE<TS,TR>) => boolean | Error[];
 
+interface CreateCondtionOptions<TSubject, TResource> {
+  subject: Subject<TSubject>
+  resource: Resource<TResource>
+  environment: any;
+  condition: SubjectResourceConditionsHash<TSubject,TResource>
+}
+
+interface SubjectResourceConditionsHash<TS,TR> {
+  [key:string] : ConditionObject<TS,TR>
+}
+
+type ConditionObject<TS,TR> = {
+  err_msg: string,
+  fn: ConditionFunction<TS,TR>
+}
+
+type ConditionFunction<TS,TR> = (subject:TS, action:TR, resource:AnyObject) => boolean
+
+type AnyObject = {[any:string]: any};
+
+type Constructor<TClass> = new(...args:any[]) => TClass;
+
+type IT<T> = InstanceType<Constructor<T>>;
+
+type Subject<T> = Constructor<T> | AnyObject
+
+type Resource<T> = Constructor<T> | AnyObject;
+
+type SRE<SubjectType, ResourceType> = [IT<SubjectType>, IT<ResourceType>, AnyObject];
+
 type PolicyFunction<TS,TR> = (conditons:PolicyConditionsHash<TS,TR>) => boolean;
+
+type PolicyConditionsHash<TS,TR> = {[K in keyof SubjectResourceConditionsHash<TS,TR>]: ConditionFunction<TS,TR>} & {
+  errors: Error[];
+}
