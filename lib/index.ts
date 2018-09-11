@@ -23,52 +23,31 @@ function getNameFrom(node:Constructor<AnyObject> | string | AnyObject):string {
   }
 }
 
-interface PolicyConditionsHash {
-  // less than ideal workaround:
-  // this dictionary has key 'errors' equal to an array of errors.
-  // unable to specify this key without typescript complaining
-  [key:string]: ((...sre:SRE<any,any>) => boolean) | string[];
-  // errors: Error[];
-}
-
-function createPolicyFunctionFactory(policy_function:(conditions:PolicyConditionsHash) => true | Error[], condition_map:SubjectResourceConditionsHash) {
-  return function(subject:Subject<any>, resource:Resource<any>, environemnt:any) {
-    const sre = [subject, resource, environemnt];
-    const available_conditions = generateAvailableConditionsForPolicy(condition_map, ...sre);
+function createPolicyFunctionFactory<TS,TR>(policy_function:(policy_conditions:PolicyConditionsHash<TS,TR>) => true | Error[], condition_hash:SubjectResourceConditionsHash<TS,TR>) {
+  return function(subject:TS, resource:TR, environemnt:any) {
+    const sre = <SRE<TS,TR>>[subject, resource, environemnt];
+    const available_conditions = generateAvailableConditionsForPolicy(condition_hash, ...sre);
     return policy_function(available_conditions);
   }
 }
 
-function generateAvailableConditionsForPolicy(conditions_hash:any, ...sre:any[]) {
-  // TODO: add type
-  let condition_functions:any = {
-    errors: []
-  };
-  condition_functions.errors = [];
+function generateAvailableConditionsForPolicy<TS,TR>(conditions_hash:SubjectResourceConditionsHash<TS,TR>, ...sre:SRE<TS,TR>) {
+  let policy_conditions = <PolicyConditionsHash<TS,TR>>{};
+  policy_conditions.errors = [];
   Object.keys(conditions_hash).map((key) => {
-    condition_functions[key] = function() {
+    policy_conditions[key] = function() {
       if (conditions_hash[key].fn(...sre)) {
         return true;
       } else {
-        condition_functions.errors.push(conditions_hash[key].err_msg);
+        policy_conditions.errors.push(new Error(conditions_hash[key].err_msg));
         return false;
       }
     }
   });
   
-  return condition_functions;
-}
-interface PoliciesTree {
-  [key:string]: {
-    [key:string]: {
-      [key:string]: (...sre:SRE<any,any>) => true | Error[];
-    }
-  }
+  return policy_conditions;
 }
 
-type Subject<T> = AnyObject | Constructor<T>;
-type Resource<T> = AnyObject | Constructor<T>;
-type SRE<SubjectType, ResourceType> = [Subject<SubjectType>, Resource<ResourceType>, AnyObject];
 export default class AbacApe {
   policies: PoliciesTree;
   conditions: ConditionsTree;
@@ -82,7 +61,7 @@ export default class AbacApe {
    * @param subject
    * @returns Contains createConditionsFor method and createPolicyFor method
    */
-  init<TS>(subject:Constructor<TS> | AnyObject) {
+  init<TS>(subject:Subject<TS>) {
     return {
       /**
        * @param resource
@@ -101,7 +80,7 @@ export default class AbacApe {
        * })
        * @example
        */
-      createConditionsFor: <TR>(resource:Constructor<TR>, environemnt:any, conditions:SubjectResourceConditionsHash) => {
+      createConditionsFor: <TR>(resource:Resource<TR>, environemnt:any, conditions:SubjectResourceConditionsHash<TS,TR>) => {
         this.createCondition({
           subject:subject,
           resource:resource,
@@ -110,7 +89,6 @@ export default class AbacApe {
         });
       },
       /**
-       * @param action
        * @param resource
        * @param environemnt
        * 
@@ -138,10 +116,10 @@ export default class AbacApe {
        * })
        * @example
        */
-      createPolicyFor: <TR>(resource: Constructor<TR>, environemnt:any) => {
+      createPolicyFor: <TR>(resource: Resource<TR>, environemnt:AnyObject) => {
         const conditions_hash = this.conditions[subject.name][resource.name]; // object of functions that take in subject, resource, environment
         return {
-          action: (action: string | string[], policy_function: (conditions:any) => true|Error[]) => {
+          action: (action: string | string[], policy_function: (conditions:PolicyConditionsHash<TS,TR>) => true|Error[]) => {
             if (typeof action === 'string') {
               this._createPolicy(subject, action, resource, environemnt, createPolicyFunctionFactory(policy_function, conditions_hash));
             } else {
@@ -155,17 +133,18 @@ export default class AbacApe {
     }
   }
 
-  private _createPolicy(subject:any, action:string, resource:any, environemnt:any, policy_function:any) {
+  private _createPolicy<TS,TR>(subject:Subject<TS>, action:string, resource:Resource<TR>, environemnt:any, policy_function:any) {
     this._normalizeTree(this.policies, [subject, action]);
     if (!this._checkForNode(this.policies, [subject, action, resource])) {
       let subject_action = this._getNode(this.policies, [subject, action]);
       if (subject_action) {
         // subject_action[resource.name] = policy_function;
-        subject_action[resource.name] = function(subject:any, action:any, resource:any) {
-          if (policy_function(...[subject, action, resource])) {
+        subject_action[resource.name] = function(subject:TS, resource:TR, environemnt:any) {
+          const sre:SRE<TS,TR> = [subject, resource, environemnt]
+          if (policy_function(...sre)) {
             return true;
           } else {
-            
+            return false;
           }
         }
       }
@@ -234,7 +213,7 @@ export default class AbacApe {
     Object.freeze(this.conditions[subject.name][resource.name]);
   }
 
-  private _addCondition<TS, TR>(subject:Constructor<TS> | AnyObject, resource:Constructor<TR> | AnyObject, environment:any, condition_name:string, condition_object:ConditionObject) :void {
+  private _addCondition<TS, TR>(subject:Constructor<TS> | AnyObject, resource:Constructor<TR> | AnyObject, environment:any, condition_name:string, condition_object:ConditionObject<TS,TR>) :void {
     this._normalizeTree(this.conditions,[subject, resource]);
     console.log(condition_object)
     this.conditions[subject.name][resource.name][condition_name] = condition_object;
@@ -306,19 +285,19 @@ export default class AbacApe {
   printPolicies() {
     console.dir(this.policies);
   }
-
+  
 }
 
 // types
 
 interface CreateCondtionOptions<TSubject, TResource> {
-  subject: Constructor<TSubject> | AnyObject;
-  resource: Constructor<TResource> | AnyObject;
+  subject: Subject<TSubject>
+  resource: Resource<TResource>
   environment: any;
-  condition: SubjectResourceConditionsHash
+  condition: SubjectResourceConditionsHash<TSubject,TResource>
 }
 
-type ConditionFunction<TS,TR> = (subject: InstanceType<Constructor<TS>>, resource: InstanceType<Constructor<TR>>, environment:any) => ConditionResultsObject
+type ConditionFunction<TS,TR> = (subject:TS, action:TR, resource:AnyObject) => ConditionResultsObject
 
 interface CreatePolicyOptions<TSubject, TResource> {
   /**
@@ -350,7 +329,7 @@ interface CreatePolicyOptions<TSubject, TResource> {
 type AnyObject = {[any:string]: any};
 
 // type ConditionResultsObject = true | IT<Error>;
-type ConditionResultsObject = any;
+type ConditionResultsObject = boolean;
 
 type Constructor<TClass> = new(...args:any[]) => TClass;
 
@@ -362,7 +341,7 @@ type ConditionsTree = {
     //Resource
     [key:string]: {
       //Condition Name
-      [key:string]: ConditionObject
+      [key:string]: ConditionObject<any,any>
     }
   }
 }
@@ -378,97 +357,28 @@ type PolicyMap = {
   }
 }
 
-type SubjectResourceConditionsHash = {
-  [key:string]: ConditionObject
+interface SubjectResourceConditionsHash<TS,TR> {
+  [key:string] : ConditionObject<TS,TR>
 }
-type ConditionObject = {
+
+type ConditionObject<TS,TR> = {
   err_msg: string,
-  fn: ConditionFunction<any,any>
+  fn: ConditionFunction<TS,TR>
 }
 
-type AddPolicyOptions<TS,TR> = {
-  subject: Constructor<TS> | AnyObject
-  action: string | string[]
-  resource: Constructor<TR> | AnyObject
-  environment: any
-  policy_fn: (...sre:SRE<any,any>) => true | Error[]
+interface PoliciesTree {
+  [key:string]: {
+    [key:string]: {
+      [key:string]: GeneratedPolicyFunction<any,any>
+    }
+  }
 }
 
-class Human {
-  id:number;
-  name: string;
-  constructor() {
-  this.id = 1;
-  this.name = 'human';
-  }
-  }
-  
-  class Animal {
-  id:number;
-  name: string;
-  constructor() {
-  this.id = 1;
-  this.name = 'animal'
-  }
-  }
-  
-  const abac = new AbacApe();
-  const human_authorization = abac.init(Human);
-  human_authorization.createConditionsFor(Animal, {}, {
-  sameId: {
-  fn: function(s,r,e) {
-  return s.id === r.id;
-  },
-  err_msg: 'different ids'
-  },
-  notSameId: {
-  fn: function(s,r,e) {
-  return s.id !== r.id;
-  },
-  err_msg: 'id should not be same'
-  },
-  true: {
-  fn: function(s,r,e) {
-  return true
-  },
-  err_msg: 'its always true why would this get hit'
-  },
-  false: {
-  fn: function(s,r,e) {
-  return false
-  },
-  err_msg: 'this is always false'
-  }
-  });
-  
-  /**
-  * test case policy. this works if all conditions functions just return a boolean value. But, this is not the case.
-  * condition functions return either true or an error object because we want to provide the exact reason why a policy has failed.
-  * it is not possible to use logical operators with functions that return anything other than exact boolean values so the
-  * policy defined below will not work properly unless it's written in a very specific way, this won't fly.
-  * In order to allow the use of ligical operators and provide the ability to all errors when and if they occur
-  * we can use a try catch wrapper function and make sure all condition functions THROW errors if they happen.
-  * this way our wrapper will catch any and all errors thrown and return appropriately
-  */
-  human_authorization.createPolicyFor(Animal, null).action('view',(C:any) => {
-  return C.sameId();
-  })
-  
-  // abac.printPolicies();
-  
-  const h = new Human();
-  const a = new Animal();
-  let a_id_not_same = new Animal();
-  a_id_not_same.id = 1000;
-  console.time('total_time')
-  for (let i = 0; i < 20000; i++) {
-    console.time(`current_check# ${i}`);
-    abac.policies.Human.view.Animal(h, a, {});
-    console.timeEnd(`current_check# ${i}`)
-  }
-  console.timeEnd('total_time')
-  const test = abac.policies.Human.view.Animal(h, a, {});
-  const test_should_fail = abac.policies.Human.view.Animal(h, a_id_not_same, {});
+type Subject<T> = Constructor<T> | AnyObject
+type Resource<T> = Constructor<T> | AnyObject;
+type SRE<SubjectType, ResourceType> = [IT<SubjectType>, IT<ResourceType>, {[key:string]:any}];
+type PolicyConditionsHash<TS,TR> = {[K in keyof SubjectResourceConditionsHash<TS,TR>]:SubjectResourceConditionsHash<TS,TR>[K]['fn']} & {
+  errors: any[];
+}
 
-  console.log('log result:', test);
-  console.log('this one should fail', test_should_fail)
+type GeneratedPolicyFunction<TS,TR> = (...sre:SRE<TS,TR>) => boolean
