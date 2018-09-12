@@ -1,7 +1,6 @@
 # AbacApe
 
-**(ALPHA)(NOT PRODUCTION READY)**
-Attribute Based Access Control Module for NodeJS
+Simple Attribute Based Access Control Module for NodeJS
 
 ## Core Features
   * Simple, Chainable, API.
