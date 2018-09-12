@@ -1,6 +1,6 @@
 {
   "name": "abacape",
-  "version": "1.1.0",
+  "version": "2.0.0-alpha.0",
   "description": "Attribute based access control",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
