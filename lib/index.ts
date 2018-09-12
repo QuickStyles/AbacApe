@@ -130,13 +130,70 @@ export default class AbacApe {
     }
   }
   
+  /**
+   * Returns all available actions for subject
+   * @param subject 
+   * 
+   * @example 
+   * 
+   * const abac = new AbacApe();
+   * class Primate {};
+   * class Banana {};
+   * //...setup conditions and policies
+   * 
+   * const p = new Primate();
+   * const b = new Banana();
+   * 
+   * const actions = abac.can(p);
+   * console.log(actions)
+   * // prints
+   * // {
+   * //   eat:function,
+   * //   hide:function,
+   * //   fight:function
+   * // }
+   * @example
+   */
+  can<TS>(subject:IT<Subject<TS>>) {
+    const available_actions = this._getNode(this.policies, [subject.constructor.name]);
+    if (available_actions) {
+      return this._mapAvailableActionsForSubject(subject, available_actions);
+    } else {
+      throw new Error(`subject: ${subject.name} has no policies`)
+    }
+  }
+
+  /**
+   * creates a hash using subject's actions as keys
+   * @param subject 
+   * @param available_actions 
+   * 
+   * @returns a hash containing all subject's actions as wrapper functions for checkPolicy
+   */
+  private _mapAvailableActionsForSubject<TS>(subject:IT<Subject<TS>>, available_actions:AnyObject) {
+    return Object.assign({}, ((available_actions)=>{
+      let available_actions_map:any = {};
+      for (const action in available_actions) {
+        available_actions_map[action] = <TR>(resource:IT<Resource<TR>>, environemnt:AnyObject) => {
+          return this.checkPolicy(subject, action, resource, environemnt);
+        }
+      }
+      return available_actions_map;
+    })(available_actions))
+  }
+
+  checkPolicy<TS,TR> (...sare:SARE<TS,TR>) {
+    const [subject, action, resource, environemnt] = sare;
+    const policy = this._getPolicy(subject, action, resource);
+    return policy(subject, resource, environemnt);
+  }
+
   private _createPolicy<TS,TR>(subject:Subject<TS>, action:string, resource:Resource<TR>, environemnt:AnyObject, policy_function:GeneratedPolicyFunction<TS,TR>) {
     this._normalizeTree(this.policies, [subject, action]);
     if (!this._checkForNode(this.policies, [subject, action, resource])) {
       let subject_action = this._getNode(this.policies, [subject, action]);
       if (subject_action) {
-        subject_action[resource.name] = function(subject:TS, resource:TR, environemnt:any) {
-          const sre:SRE<TS,TR> = [subject, resource, environemnt]
+        subject_action[resource.name] = function(...sre:SRE<TS,TR>) {
           if (policy_function(...sre)) {
             return true;
           } else {
@@ -179,7 +236,6 @@ export default class AbacApe {
   
   private _addCondition<TS, TR>(subject:Constructor<TS> | AnyObject, resource:Constructor<TR> | AnyObject, environment:any, condition_name:string, condition_object:ConditionObject<TS,TR>) :void {
     this._normalizeTree(this.conditions,[subject, resource]);
-    console.log(condition_object)
     this.conditions[subject.name][resource.name][condition_name] = condition_object;
   }
   
@@ -231,7 +287,7 @@ export default class AbacApe {
     }
   }
   
-  _getPolicy<TS,TR>(subject:Constructor<TS> | AnyObject, action:string, resource:Constructor<TR> | AnyObject) {
+  _getPolicy<TS,TR>(subject:Constructor<TS> | AnyObject, action:string, resource:Constructor<TR> | AnyObject) :GeneratedPolicyFunction<TS,TR>{
     try {
       return this.policies[subject.constructor.name][action][resource.constructor.name];
     } catch (error) {
@@ -317,3 +373,5 @@ type PolicyConditionsHash<TS,TR> = {[K in keyof SubjectResourceConditionsHash<TS
 type NodePath = (Constructor<any> | string | AnyObject)[];
 
 type Node = (Constructor<any> | string | AnyObject);
+
+type SARE<TS,TR> = [IT<TS>, string, IT<TR>, AnyObject];
