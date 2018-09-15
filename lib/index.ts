@@ -1,6 +1,16 @@
-function constructorOrPlainObject<T>(object:Constructor<T> | AnyObject) {
-  return object === Object(object) || typeof object === 'function';
-};
+// needs research and tested further.
+function isValidConstructor<T>(object:Constructor<T> | AnyObject) {
+  // must be a function
+  if (typeof object.constructor !== 'function') {
+    return false;
+  }
+
+  // do not allow primitive constructor functions
+  if (['Object', 'Array', 'Number', 'String', 'Symbol', 'Date', 'Function', 'Boolean', undefined, null, ''].includes(object.name)) {
+    return false;
+  }
+  return true;
+}
 
 function shiftNodeFromArray<T>(nodes:NodePath) {
   nodes.shift();
@@ -44,6 +54,37 @@ function generateAvailableConditionsForPolicy<TS,TR>(conditions_hash:SubjectReso
   return policy_conditions;
 };
 
+/**
+ * Used to validate SubjectResourceConditionsHash.
+ * Will throw error if:
+ * 1) condition object property err_msg is not string
+ * 2) condition object property fn is not function
+ * 3) condition object has properties other than err_msg, and fn.
+ * @param conditions_hash 
+ */
+function validateSubjectResourceConditionsHash<TS,TR>(conditions_hash:SubjectResourceConditionsHash<TS,TR>) {
+  const keys_array = Object.keys(conditions_hash);
+  keys_array.forEach((key) => {
+    const conditions_object:ConditionObject<TS,TR> = conditions_hash[key];
+    // exit if err_msg is not string;
+    if (typeof conditions_object.err_msg !== 'string') {
+      throw new Error(`expected err_msg in condition ${key} to be type string instead got ${typeof conditions_object.err_msg}`);
+    };
+    // exit if fn is not function;
+    if (typeof conditions_object.fn !== 'function') {
+      throw new Error(`expected fn in condition ${key} to be type function instead got ${typeof conditions_object.err_msg}`);
+    };
+    // exit if there are extra properties
+    if (Object.keys(conditions_object).length > 2) {
+      let condtion_object_keys = Object.keys(conditions_object);
+      const extra_keys = condtion_object_keys.filter((value) => {
+        return (value !== 'fn') && (value !== 'err_msg');
+      })
+      throw new Error(`expected only fn and err_msg properties but got extra properties: ${extra_keys}`)
+    }
+  });
+};
+
 export default class AbacApe {
   policies: PoliciesTree;
   conditions: ConditionsTree;
@@ -58,6 +99,9 @@ export default class AbacApe {
    * @returns Contains createConditionsFor method and createPolicyFor method
    */
   init<TS>(subject:Subject<TS>) {
+    if (!isValidConstructor(subject)) {
+      throw new Error(`expected subject to be constructor instead got: ${subject}`);
+    }
     return {
       /**
        * @param resource
@@ -77,6 +121,10 @@ export default class AbacApe {
        * @example
        */
       createConditionsFor: <TR>(resource:Resource<TR>, environemnt:AnyObject, conditions:SubjectResourceConditionsHash<TS,TR>) => {
+        if (!isValidConstructor(resource)) {
+          throw new Error(`expected resource to be constructor instead got: ${resource}`);
+        }
+        validateSubjectResourceConditionsHash(conditions);
         this.createCondition({
           subject:subject,
           resource:resource,
@@ -113,6 +161,9 @@ export default class AbacApe {
        * @example
        */
       createPolicyFor: <TR>(resource: Resource<TR>, environemnt:AnyObject) => {
+        if (!isValidConstructor(resource)) {
+          throw new Error(`expected resource to be constructor instead got: ${resource}`);
+        }
         const conditions_hash = this.conditions[subject.name][resource.name]; // object of functions that take in subject, resource, environment
         return {
           action: (action: string | string[], policy_function: PolicyFunction<TS,TR>) => {
@@ -207,10 +258,10 @@ export default class AbacApe {
   }
   
   createCondition<TS, TR>({subject, resource, environment, condition}:CreateCondtionOptions<TS,TR>) {
-    if(!constructorOrPlainObject(subject)) {
+    if(!isValidConstructor(subject)) {
       throw new TypeError(`Expected subject to be constructor or plain object, got ${typeof subject}`);
     };
-    if(!constructorOrPlainObject(resource)) {
+    if(!isValidConstructor(resource)) {
       throw new TypeError(`Expected resource to be constructor or plain object, got ${typeof resource}`);
     }
     
@@ -341,16 +392,16 @@ interface CreateCondtionOptions<TSubject, TResource> {
   condition: SubjectResourceConditionsHash<TSubject,TResource>
 };
 
-interface SubjectResourceConditionsHash<TS,TR> {
+export interface SubjectResourceConditionsHash<TS,TR> {
   [key:string] : ConditionObject<TS,TR>
 };
 
-type ConditionObject<TS,TR> = {
+export type ConditionObject<TS,TR> = {
   err_msg: string,
   fn: ConditionFunction<TS,TR>
 };
 
-type ConditionFunction<TS,TR> = (subject:TS, action:TR, resource:AnyObject) => boolean;
+type ConditionFunction<TS,TR> = (subject:IT<TS>, resource:IT<TR>, environemnt:AnyObject) => boolean;
 
 type AnyObject = {[any:string]: any};
 
