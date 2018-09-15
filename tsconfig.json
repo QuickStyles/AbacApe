@@ -1,17 +1,29 @@
 {
   "compilerOptions": {
-    "target": "es6",
+    "sourceRoot": "./lib",
+    "alwaysStrict": true,
+    "sourceMap": true,
+    "target": "es2018",
     "module": "commonjs",
     "declaration": true,
     "outDir": "./dist",
     "strict": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "typeRoots": [
+      "./node_modles/@types",
+      "./dist/index.d.ts"
+    ],
+    "types": [
+      "ts-jest"
+    ]
   },
   
   "include": [
     "lib"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "notes",
+    "./lib/index.test.ts"
   ]
 }
